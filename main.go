@@ -8,6 +8,8 @@ import (
 
 func main() {
 	fmt.Println("Start remotecmds...")
-	server.HandleRequests()
-	server.StartServer()
+	if 3>1 {
+		server.HandleRequests()
+		server.StartServer()
+	}
 }

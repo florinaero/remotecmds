@@ -4,44 +4,46 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
 	"strconv"
-	"strings"
 	"time"
+	"github.com/pbnjay/memory"
 )
 
-// done * Current UTC time
-// done * Current CPU usage
-// * Available RAM
-// * CPU usage over last hour
-// * Available RAM over last hour
-// * Download url into specific folder
-// * Make computer "say" something
-// * Capture and send a screenshot
-// * Trigger webhook at specific time
+var Cpu_avgh_ cpu_h
+
+// done * 1. Current UTC time
+// done * 2. Current CPU usage
+// done * 3. Available RAM
+// done * 4. CPU usage over last hour
+// * 5. Available RAM over last hour
+// * 6. Download url into specific folder
+// * 7. Make computer "say" something
+// * 8. Capture and send a screenshot
+// * 9. Trigger webhook at specific time
 
 // Request counter
-type httpCounter struct {
+type HttpCounter struct {
 	counter map[int]int
-	chn chan int
+	chn     chan int
 }
 
 // Grab counter from channel when is available
-func (hc *httpCounter) grab_counter(w http.ResponseWriter) {
+func (hc *HttpCounter) grab_counter(w http.ResponseWriter) {
 	cnt := <-hc.chn
 	cnt++
 	hc.counter[0] = cnt
-	fmt.Fprint(w, "Counter = " + strconv.Itoa(cnt))
+	fmt.Fprint(w, "Counter = "+strconv.Itoa(cnt))
 	time_now := time.Now().String()
-	fmt.Fprintln(w, "	time: " + time_now)
+	fmt.Fprintln(w, "	time: "+time_now)
 }
 
 // Send counter to channel for future grabs
-func (hc *httpCounter) release_counter() {
+func (hc *HttpCounter) release_counter() {
 	hc.chn <- hc.counter[0]
 }
 
-func (hc *httpCounter) time_utc(w http.ResponseWriter, req *http.Request) {
+// 1. Current UTC time
+func (hc *HttpCounter) time_utc(w http.ResponseWriter, req *http.Request) {
 	hc.grab_counter(w)
 	time_now := time.Now().UTC().String()
 	fmt.Fprintln(w, "Request UTC time: "+time_now+"\n")
@@ -49,56 +51,40 @@ func (hc *httpCounter) time_utc(w http.ResponseWriter, req *http.Request) {
 	// time.Sleep(6 * time.Second)
 }
 
-func get_cpu_usage() float64 {
-	var sum float64
-	args := "-A -o %cpu"
-	cmd := exec.Command("ps",strings.Split(args," ")... ) 
-	
-	stdout, err := cmd.Output()
-	if err != nil {
-		fmt.Println(err)
-		return -1
-	}
-	res := string(stdout)
-	f := strings.Fields(res)
-	// Skip first item that is string "CPU"
-	count_proc := 0
-	for i:=1;i<len(f);i++ {
-		num,err := strconv.ParseFloat(f[i],64)
-		if err!=nil{
-			fmt.Println(err)
-		}
-		count_proc++
-		sum = sum + num
-	}
-	return sum
-}
 
-func (hc *httpCounter) cpu_usage(w http.ResponseWriter, req *http.Request) {
+
+// 3. Available RAM
+func (hc *HttpCounter) get_ram(w http.ResponseWriter, req *http.Request) {
 	hc.grab_counter(w)
-
-	// cpu_num := runtime.NumCPU()
-	cpu_usage := get_cpu_usage()
-	fmt.Fprintln(w, "cpu usage is "+strconv.FormatFloat(cpu_usage,'f',2,64)+"\n")
+	total_ram := memory.TotalMemory()
+	ram_str := strconv.FormatUint(total_ram, 10)
+	fmt.Fprintln(w, "Total system RAM: "+ram_str+"\n")
 	hc.release_counter()
 }
 
+// Server handler requests
 func HandleRequests() {
-	hc := httpCounter{make(map[int]int), make(chan int)}
+	hc := HttpCounter{make(map[int]int), make(chan int)}
 	hc.counter[0] = 1
-	go func (){
-		for{
+	go func() {
+		for {
 			hc.chn <- hc.counter[0]
 			hc.counter[0] = <-hc.chn
 		}
-		}()
-		go http.HandleFunc("/time", hc.time_utc)
-		go http.HandleFunc("/cpu", hc.cpu_usage)
+	}()
+	go http.HandleFunc("/time", hc.time_utc)
+	go http.HandleFunc("/cpu", hc.cpu_usage)
+	go http.HandleFunc("/ram", hc.get_ram)
+    go http.HandleFunc("/cpu_h", hc.cpu_hour_usage)
 }
 
 func StartServer() {
-	fmt.Printf("Starting server at port 8080\n")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	const PORT_NO = "8080"
+	fmt.Printf("Starting server at port %s\n", PORT_NO)
+	
+	go Start_cpu_avg()
+	
+	if err := http.ListenAndServe(":"+PORT_NO, nil); err != nil {
 		log.Fatal(err)
 	}
 }
